@@ -43,16 +43,15 @@
   </div>
 
   <div class="card">
-    <div class="step"><div class="num">📡</div><h2>自动回收通道（已接通）</h2></div>
-    <p>受调查人员在 <a href="interview.html">访谈页面</a> 答完 13 题后，访谈记录会<b>自动上传</b>到以下后台通道，无需用户手动粘贴：</p>
-    <div class="prompt" style="font-size:15px; font-family:inherit;">后台通道：catball-interview-C46njqLT
-后台网页版：https://ntfy.sh/catball-interview-C46njqLT</div>
-    <h3>工作人员接收方式</h3>
-    <ol>
-      <li><b>手机实时接收（推荐）</b>：安装 ntfy App（应用商店/ntfy.sh 下载）→ 订阅主题 <b>catball-interview-C46njqLT</b> → 每当有人完成访谈，手机立刻收到完整记录推送</li>
-      <li><b>网页查看</b>：打开上方“后台网页版”地址即可看到近期提交（服务器保留约 12 小时，建议手机订阅为主）</li>
-      <li>收到记录后复制粘贴到下方表格录入，形成数据后台</li>
-    </ol>
+    <div class="step"><div class="num">📡</div><h2>访谈数据后台（自动回收 · 实时展示）</h2></div>
+    <p>受调查人员在 <a href="interview.html">访谈页面</a> 答完 13 题后，访谈记录会<b>自动上传</b>。点击下方按钮即可在本页拉取并展示全部已收到的访谈数据：</p>
+    <div style="display:flex; gap:12px; flex-wrap:wrap; margin:12px 0;">
+      <button class="btn btn-primary" onclick="refreshBackend()">🔄 拉取最新访谈数据</button>
+      <button class="btn btn-ghost" onclick="exportRecords()">💾 导出备份数据</button>
+      <button class="btn btn-ghost" onclick="clearLocal()">🗑 清空本机缓存</button>
+    </div>
+    <p class="muted">已在本机累计：<b id="recCount">0</b> 份访谈记录。首次拉取仅能获取近 12 小时内提交的记录，请尽早拉取一次，之后数据会一直保存在本机。</p>
+    <div id="recordList" style="margin-top:16px;"></div>
   </div>
 
   <div class="card">
@@ -72,5 +71,99 @@
 </footer>
 
 <script src="js/main.js"></script>
+<script>
+var TOPIC = 'catball-interview-C46njqLT';
+var LS_KEY = 'catball_records_v1';
+var SEEN_KEY = 'catball_seen_ids_v1';
+
+function loadRecords() {
+  try { return JSON.parse(localStorage.getItem(LS_KEY) || '[]'); } catch (e) { return []; }
+}
+function saveRecords(list) { localStorage.setItem(LS_KEY, JSON.stringify(list)); }
+function loadSeen() {
+  try { return JSON.parse(localStorage.getItem(SEEN_KEY) || '[]'); } catch (e) { return []; }
+}
+
+function refreshBackend() {
+  var btn = event.currentTarget;
+  var old = btn.textContent;
+  btn.textContent = '⏳ 拉取中…';
+  btn.disabled = true;
+  fetch('https://ntfy.sh/' + TOPIC + '/json?poll=1')
+    .then(function (r) { return r.text(); })
+    .then(function (t) {
+      var seen = loadSeen();
+      var records = loadRecords();
+      var added = 0;
+      t.split('\n').forEach(function (line) {
+        if (!line.trim()) return;
+        try {
+          var m = JSON.parse(line);
+          if (m.event !== 'message' || !m.message || seen.indexOf(m.id) !== -1) return;
+          seen.push(m.id);
+          records.push({
+            id: m.id,
+            time: m.time ? new Date(m.time * 1000).toLocaleString() : '',
+            body: m.message
+          });
+          added++;
+        } catch (e) {}
+      });
+      saveRecords(records);
+      localStorage.setItem(SEEN_KEY, JSON.stringify(seen));
+      renderRecords();
+      btn.textContent = added > 0 ? ('✅ 新收到 ' + added + ' 份') : old;
+      setTimeout(function () { btn.textContent = old; btn.disabled = false; }, 2000);
+    })
+    .catch(function () {
+      btn.textContent = '❌ 拉取失败，请重试';
+      setTimeout(function () { btn.textContent = old; btn.disabled = false; }, 2000);
+    });
+}
+
+function renderRecords() {
+  var records = loadRecords().slice().reverse();
+  var el = document.getElementById('recordList');
+  var cnt = document.getElementById('recCount');
+  if (cnt) cnt.textContent = String(records.length);
+  if (!el) return;
+  if (!records.length) {
+    el.innerHTML = '<p class="muted">暂无访谈记录。等有人在访谈页面完成 13 题后，点击上方按钮拉取。</p>';
+    return;
+  }
+  var html = '';
+  records.forEach(function (r, i) {
+    var body = r.body.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    html += '<details style="background:#fffaf6;border:1px solid #f0e4d8;border-radius:12px;padding:12px 16px;margin:10px 0;">'
+      + '<summary style="cursor:pointer;font-weight:600;"># ' + (records.length - i) + ' · ' + (r.time || '未知时间') + '</summary>'
+      + '<pre style="white-space:pre-wrap;font-family:inherit;font-size:13px;margin:10px 0 0;line-height:1.7;">' + body + '</pre></details>';
+  });
+  el.innerHTML = html;
+}
+
+function exportRecords() {
+  var data = loadRecords();
+  if (!data.length) { alert('还没有可导出的记录，请先拉取数据'); return; }
+  var blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = '访谈数据备份_' + new Date().toISOString().slice(0, 10) + '.json';
+  a.click();
+}
+
+function clearLocal() {
+  if (confirm('确定清空本机保存的访谈记录吗？（不影响已上传的数据，但清空后无法再次拉取已超过12小时的记录）')) {
+    localStorage.removeItem(LS_KEY);
+    localStorage.removeItem(SEEN_KEY);
+    renderRecords();
+  }
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+  renderRecords();
+  var el = document.getElementById('recordList');
+  if (el && loadRecords().length === 0) { refreshBackend(); }
+});
+</script>
 </body>
 </html>
