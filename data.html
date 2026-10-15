@@ -54,6 +54,27 @@
     <div id="recordList" style="margin-top:16px;"></div>
   </div>
 
+  <div class="card" id="analysisCard" style="display:none;">
+    <div class="step"><div class="num">📈</div><h2>数据分析（自动生成）</h2></div>
+    <h3>① 猫咪行为问题分布</h3>
+    <div id="chart-pain" class="chartbox"></div>
+    <h3>② 现有玩具不满点分布</h3>
+    <div id="chart-complaint" class="chartbox"></div>
+    <h3>③ 用户安全顾虑分布</h3>
+    <div id="chart-concern" class="chartbox"></div>
+    <h3>④ 购买决策因素（提及人次）</h3>
+    <div id="chart-factor" class="chartbox"></div>
+    <h3>⑤ 心理价位分布</h3>
+    <div id="chart-price" class="chartbox"></div>
+    <h3>⑥ 产品态度与推荐意愿</h3>
+    <div id="chart-attitude" class="chartbox"></div>
+  </div>
+
+  <div class="card" id="insightCard" style="display:none;">
+    <div class="step"><div class="num">🧭</div><h2>主题产品设计调研分析（自动生成）</h2></div>
+    <div id="insightBody"></div>
+  </div>
+
   <div class="card">
     <div class="step"><div class="num">🔄</div><h2>数据流转机制</h2></div>
     <ol>
@@ -125,7 +146,8 @@ function renderRecords() {
   var records = loadRecords().slice().reverse();
   var el = document.getElementById('recordList');
   var cnt = document.getElementById('recCount');
-  if (cnt) cnt.textContent = String(records.length);
+  if (cnt) cnt.textContent = String(loadRecords().length);
+  if (typeof renderAnalysis === 'function') { try { renderAnalysis(); } catch (e) {} }
   if (!el) return;
   if (!records.length) {
     el.innerHTML = '<p class="muted">暂无访谈记录。等有人在访谈页面完成 13 题后，点击上方按钮拉取。</p>';
@@ -149,6 +171,238 @@ function exportRecords() {
   a.href = URL.createObjectURL(blob);
   a.download = '访谈数据备份_' + new Date().toISOString().slice(0, 10) + '.json';
   a.click();
+}
+
+/* ===== 数据分析与图表 ===== */
+var CSS_COLORS = ['#ff7a45','#ffb26b','#ffd8a8','#e8a13c','#d9ecff','#7fb8ff','#2e9e6b','#8a7f78'];
+
+function has(txt, words) { return words.some(function (w) { return txt.indexOf(w) !== -1; }); }
+
+function extractNumber(txt) {
+  var m = txt.match(/(\d+(?:\.\d+)?)\s*(万|千)?/);
+  if (!m) return null;
+  var v = parseFloat(m[1]);
+  if (m[2] === '万') v = v * 10000;
+  if (m[2] === '千') v = v * 1000;
+  return v;
+}
+
+function analyze(records) {
+  var pain = {}, complaint = {}, concern = {}, factor = {}, price = {'20元以下':0,'20-40元':0,'41-60元':0,'60元以上':0,'未提及':0};
+  var attitude = {'有用/感兴趣':0,'觉得一般':0,'没用/不感兴趣':0,'未明确':0};
+  var recommend = {'愿意推荐':0,'看情况':0,'不愿意':0};
+  var reaction = {'觉得便宜/可接受':0,'觉得贵/犹豫':0,'未明确':0};
+  var freshHours = [];
+  var n = records.length;
+  function count(obj, key) { obj[key] = (obj[key] || 0) + 1; }
+
+  records.forEach(function (r) {
+    var lines = r.body.split('\n');
+    var q = {};
+    lines.forEach(function (l) {
+      var m = l.match(/^Q(\d+)：([\s\S]*)/);
+      if (m) q[m[1]] = m[2];
+    });
+    var a3 = (q['3'] || '') + (q['4'] || '');
+    var a5 = q['5'] || ''; var a6 = q['6'] || ''; var a7 = q['7'] || '';
+    var a8 = q['8'] || ''; var a9 = q['9'] || ''; var a10 = q['10'] || '';
+    var a11 = q['11'] || ''; var a12 = q['12'] || ''; var a13 = q['13'] || '';
+
+    // ① 行为问题
+    if (a3) {
+      if (has(a3, ['拆家','拆','破坏','咬家具','抓家具'])) count(pain, '拆家/破坏家具');
+      if (has(a3, ['挠沙发','抓沙发','挠','抓'])) if (!has(a3,['拆家'])) count(pain, '挠抓家具');
+      if (has(a3, ['半夜','跑酷','晚上','夜间'])) count(pain, '夜间跑酷');
+      if (has(a3, ['无聊','睡觉','睡','懒'])) count(pain, '无聊嗜睡');
+      if (has(a3, ['叫','嚎','喵叫'])) count(pain, '嚎叫扰人');
+      if (!Object.keys(pain).length) count(pain, '其他/未明确');
+      if (has(a3, ['拆家','挠沙发','抓沙发','挠','抓','半夜','跑酷','晚上','夜间','无聊','睡觉','睡','叫','嚎']) === false) count(pain, '其他/未明确');
+    }
+
+    // ② 不满点
+    if (a7) {
+      if (has(a7, ['人拿','手持','陪','手动','一直']) || has(a7, ['没时间','陪玩'])) count(complaint, '需人手持陪玩');
+      if (has(a7, ['腻','新鲜','一会儿','三分钟','不玩了','几天'])) count(complaint, '猫很快玩腻');
+      if (has(a7, ['吵','声音','噪音'])) count(complaint, '噪音大');
+      if (has(a7, ['咬','坏','烂','不结实','坏掉'])) count(complaint, '不耐咬易坏');
+      if (has(a7, ['卡','撞','墙'])) count(complaint, '卡墙角/卡住');
+      if (has(a7, ['电','续航','充电']) && !has(a7, ['不'])) count(complaint, '续航短');
+      if (!Object.keys(complaint).length) count(complaint, '其他/未明确');
+    }
+
+    // ③ 安全顾虑
+    if (a9) {
+      if (has(a9, ['激光','眼睛','眼'])) count(concern, '激光伤眼');
+      if (has(a9, ['羽毛','误食','吞','吃'])) count(concern, '羽毛误食');
+      if (has(a9, ['吵','噪音','声音','邻居'])) count(concern, '噪音扰邻');
+      if (has(a9, ['电','续航','充电'])) count(concern, '续航/充电');
+      if (has(a9, ['摔','坏','结实'])) count(concern, '耐用性');
+      if (!Object.keys(concern).length) count(concern, '无/未提及');
+    }
+
+    // ④ 决策因素
+    if (a10) {
+      if (has(a10, ['价格','便宜','钱','价'])) count(factor, '价格');
+      if (has(a10, ['安全'])) count(factor, '安全');
+      if (has(a10, ['静音','安静','声音'])) count(factor, '静音');
+      if (has(a10, ['续航','电池','耐用','耐咬','结','用'])) if (has(a10, ['续航','电池','耐咬','结'])) count(factor, '续航/耐用');
+      if (has(a10, ['颜值','好看','可爱','外观'])) count(factor, '颜值');
+      if (!Object.keys(factor).length) count(factor, '未明确');
+    }
+
+    // ⑤ 心理价位
+    if (a11) {
+      var v = extractNumber(a11);
+      if (v === null || v <= 0) count(price, '未提及');
+      else if (v < 20) count(price, '20元以下');
+      else if (v <= 40) count(price, '20-40元');
+      else if (v <= 60) count(price, '41-60元');
+      else count(price, '60元以上');
+    } else { count(price, '未提及'); }
+
+    // ⑥ 产品态度
+    if (a8) {
+      if (has(a8, ['有用','不错','好','感兴趣','会买','想买','可以'])) count(attitude, '有用/感兴趣');
+      else if (has(a8, ['一般','还行','看看','再说'])) count(attitude, '觉得一般');
+      else if (has(a8, ['没用','不感兴趣','不需要','不买','不会'])) count(attitude, '没用/不感兴趣');
+      else count(attitude, '未明确');
+    } else { count(attitude, '未明确'); }
+
+    // 价格反应
+    if (a12) {
+      if (has(a12, ['便宜','划算','可以','能接受','接受','不错','好'])) count(reaction, '觉得便宜/可接受');
+      else if (has(a12, ['贵','犹豫','考虑','再看看','有点'])) count(reaction, '觉得贵/犹豫');
+      else count(reaction, '未明确');
+    } else { count(reaction, '未明确'); }
+
+    // 推荐意愿
+    if (a13) {
+      if (has(a13, ['愿意','会','推荐','可以'])) count(recommend, '愿意推荐');
+      else if (has(a13, ['看','不一定','再说','可能'])) count(recommend, '看情况');
+      else if (has(a13, ['不会','不推荐','不愿意','不'])) count(recommend, '不愿意');
+      else count(recommend, '看情况');
+    } else { count(recommend, '看情况'); }
+
+    // 新鲜感时长（小时）
+    if (a6) {
+      var fm = a6.match(/(\d+(?:\.\d+)?)\s*(个?小时|天|周|星期|个月?|分钟)/);
+      if (fm) {
+        var fv = parseFloat(fm[1]);
+        var u = fm[2];
+        if (u.indexOf('分钟') !== -1) fv = fv / 60;
+        else if (u.indexOf('天') !== -1) fv = fv * 24;
+        else if (u.indexOf('周') !== -1 || u.indexOf('星期') !== -1) fv = fv * 24 * 7;
+        else if (u.indexOf('月') !== -1) fv = fv * 24 * 30;
+        freshHours.push(fv);
+      }
+    }
+  });
+
+  return { pain: pain, complaint: complaint, concern: concern, factor: factor, price: price, attitude: attitude, recommend: recommend, reaction: reaction, freshHours: freshHours, n: n };
+}
+
+function sortObj(obj) {
+  return Object.keys(obj).map(function (k) { return [k, obj[k] || 0]; })
+    .filter(function (kv) { return kv[1] > 0; })
+    .sort(function (a, b) { return b[1] - a[1]; });
+}
+
+function renderDonut(elId, title, stats, total) {
+  var el = document.getElementById(elId);
+  if (!el) return;
+  if (!stats.length) { el.innerHTML = '<p class="muted">暂无数据</p>'; return; }
+  var sum = stats.reduce(function (s, kv) { return s + kv[1]; }, 0) || 1;
+  var angle = 0, grad = [];
+  stats.forEach(function (kv, i) {
+    var pct = kv[1] / sum * 100;
+    var next = angle + pct;
+    grad.push(CSS_COLORS[i % CSS_COLORS.length] + ' ' + angle.toFixed(2) + '% ' + next.toFixed(2) + '%');
+    angle = next;
+  });
+  var legend = stats.map(function (kv, i) {
+    var pct = (kv[1] / sum * 100).toFixed(0);
+    return '<div class="lg-row"><span class="lg-dot" style="background:' + CSS_COLORS[i % CSS_COLORS.length] + '"></span>'
+      + kv[0] + '　<b>' + kv[1] + '人 · ' + pct + '%</b></div>';
+  }).join('');
+  el.innerHTML = '<div class="chartwrap"><div class="donut" style="background:conic-gradient(' + grad.join(',') + ')">'
+    + '<div class="donut-hole"><b>' + total + '</b><span>人</span></div></div>'
+    + '<div class="legend"><div class="lg-title">' + title + '</div>' + legend + '</div></div>';
+}
+
+function renderBars(elId, stats, total) {
+  var el = document.getElementById(elId);
+  if (!el) return;
+  if (!stats.length) { el.innerHTML = '<p class="muted">暂无数据</p>'; return; }
+  var max = stats[0][1] || 1;
+  var html = stats.map(function (kv, i) {
+    var pctW = Math.max(6, kv[1] / max * 100);
+    var pctL = (kv[1] / total * 100).toFixed(0);
+    return '<div class="bar-row"><div class="bar-label">' + kv[0] + '</div>'
+      + '<div class="bar-track"><div class="bar-fill" style="width:' + pctW + '%;background:' + CSS_COLORS[i % CSS_COLORS.length] + '"></div></div>'
+      + '<div class="bar-val">' + kv[1] + '人 · ' + pctL + '%</div></div>';
+  }).join('');
+  el.innerHTML = html;
+}
+
+function renderAnalysis() {
+  var records = loadRecords();
+  var card = document.getElementById('analysisCard');
+  var icard = document.getElementById('insightCard');
+  if (!records.length) { card.style.display = 'none'; icard.style.display = 'none'; return; }
+  card.style.display = 'block'; icard.style.display = 'block';
+  var s = analyze(records);
+  var n = s.n;
+
+  renderDonut('chart-pain', '猫咪行为问题（多标签统计）', sortObj(s.pain), n);
+  renderDonut('chart-complaint', '现有玩具不满点', sortObj(s.complaint), n);
+  renderDonut('chart-concern', '安全顾虑', sortObj(s.concern), n);
+  renderBars('chart-factor', sortObj(s.factor), n);
+  renderBars('chart-price', sortObj(s.price), n);
+
+  var att = sortObj(s.attitude), rec = sortObj(s.recommend), rea = sortObj(s.reaction);
+  var bars = [];
+  att.forEach(function (kv) { bars.push(['态度-' + kv[0], kv[1]]); });
+  rea.forEach(function (kv) { bars.push(['价格反应-' + kv[0], kv[1]]); });
+  rec.forEach(function (kv) { bars.push(['推荐-' + kv[0], kv[1]]); });
+  bars.sort(function (a, b) { return b[1] - a[1]; });
+  renderBars('chart-attitude', bars, n);
+
+  renderInsights(s, n, att, rec, rea);
+}
+
+function renderInsights(s, n, att, rec, rea) {
+  var el = document.getElementById('insightBody');
+  var top = function (obj) { var a = sortObj(obj); return a.length ? a[0] : null; };
+  var html = '<p class="muted">基于 ' + n + ' 份访谈记录自动生成，随数据更新：</p>';
+
+  var topPain = top(s.pain), topConcern = top(s.concern), topComplaint = top(s.complaint);
+  var topFactor = top(s.factor);
+  if (topPain) html += '<div class="who"><b>🎯 核心痛点验证</b><br>"' + topPain[0] + '"是被提及最多的行为问题（' + topPain[1] + '/' + n + ' 人）。产品设计应继续主打"解决猫咪独自在家' + topPain[0].split('/')[0] + '"的场景，详情页首屏建议用该场景做主图。</div>';
+  if (topComplaint) html += '<div class="who"><b>⚠️ 竞品短板即机会</b><br>现有玩具最大不满是"' + topComplaint[0] + '"（' + topComplaint[1] + ' 人提及）。若与自动避障、触碰唤醒功能相关，应在详情页做"新旧对比"：竞品卡墙角 vs 本品 360° 智能转向。</div>';
+  if (topConcern) html += '<div class="who"><b>🛡 安全设计优先级</b><br>用户最大顾虑是"' + topConcern[0] + '"（' + topConcern[1] + ' 人）。建议：激光采用 Class 1 安全功率并在详情页标注认证；羽毛配件改为可吞咽安全级别材质/加固安装，并把安全说明前置到主图卖点。</div>';
+  if (topFactor) html += '<div class="who"><b>💰 决策因素与定价</b><br>用户最看重"' + topFactor[0] + '"（' + topFactor[1] + ' 人提及）。首件 ¥19.9 的低价钩子符合多数用户心理价位区间，建议保留限购策略；单买 ¥43 可搭配配件（备用羽毛/铃铛）提升感知价值。</div>';
+
+  var prices = s.freshHours.slice().sort(function (a, b) { return a - b; });
+  if (prices.length) {
+    var median = prices[Math.floor(prices.length / 2)];
+    html += '<div class="who"><b>⏱ 玩具新鲜感中位数</b><br>用户家猫对现有玩具的兴趣中位数约为 ' + (median < 1 ? Math.round(median * 60) + ' 分钟' : median.toFixed(1) + ' 小时') + '。佐证"猫很快玩腻"是普遍痛点，建议产品增加随机运动模式（速度/方向随机化）延长新鲜感，并在详情页强调"不重复路线"。</div>';
+  }
+
+  var recTop = rec.length ? rec[0] : null;
+  if (recTop) html += '<div class="who"><b>📣 口碑与推荐</b><br>"' + recTop[0] + '"占主流（' + recTop[1] + '/' + n + '）。' + (recTop[0] === '愿意推荐' ? '好评率较高，建议在拼多多详情页增加"晒单有礼"引导用户晒猫咪玩耍视频，扩大口碑。' : '推荐意愿有限，建议在售后环节增加使用指导（如何引导猫玩耍），提升实际体验后再引导复购与推荐。') + '</div>';
+
+  html += '<h3>产品设计调研结论（优先级排序）</h3><ol>';
+  var pri = [];
+  if (s.concern['激光伤眼']) pri.push('激光安全认证与防直射设计（' + s.concern['激光伤眼'] + '人顾虑）');
+  if (s.concern['羽毛误食']) pri.push('羽毛配件防误食加固（' + s.concern['羽毛误食'] + '人顾虑）');
+  if (s.complaint['猫很快玩腻']) pri.push('随机运动模式抗玩腻（' + s.complaint['猫很快玩腻'] + '人痛点）');
+  if (s.complaint['噪音大'] || s.concern['噪音扰邻']) pri.push('静音电机与软胶轮胎强化（' + ((s.complaint['噪音大'] || 0) + (s.concern['噪音扰邻'] || 0)) + '人提及）');
+  if (s.complaint['需人手持陪玩']) pri.push('全自动解放双手卖点前置（' + s.complaint['需人手持陪玩'] + '人痛点）');
+  if (s.factor['价格']) pri.push('价格锚点与限时优惠策略（' + s.factor['价格'] + '人在意价格）');
+  if (!pri.length) pri.push('样本量尚少，继续收集后再输出优先级');
+  pri.forEach(function (p, i) { html += '<li><b>P' + (i + 1) + '</b>：' + p + '</li>'; });
+  html += '</ol>';
+  el.innerHTML = html;
 }
 
 function clearLocal() {
