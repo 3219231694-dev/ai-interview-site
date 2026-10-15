@@ -195,6 +195,33 @@ th, td { border: 1px solid var(--line); padding: 10px 12px; vertical-align: top;
   padding: 32px 20px 44px; border-top: 1px solid var(--line); margin-top: 20px;
 }
 
+/* ===== Charts (pure CSS/SVG) ===== */
+.chartbox { margin: 12px 0 20px; }
+.chartwrap { display: flex; align-items: center; gap: 26px; flex-wrap: wrap; }
+.donut {
+  width: 150px; height: 150px; border-radius: 50%; position: relative; flex-shrink: 0;
+}
+.donut-hole {
+  position: absolute; inset: 34px; background: var(--card); border-radius: 50%;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+}
+.donut-hole b { font-size: 26px; line-height: 1.1; }
+.donut-hole span { font-size: 12px; color: var(--muted); }
+.legend { flex: 1; min-width: 200px; }
+.lg-title { font-weight: 700; font-size: 14px; margin-bottom: 6px; color: var(--primary-dark); }
+.lg-row { font-size: 13px; margin: 4px 0; }
+.lg-dot { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 8px; }
+.bar-row { display: flex; align-items: center; gap: 10px; margin: 8px 0; }
+.bar-label { width: 150px; font-size: 13px; text-align: right; flex-shrink: 0; color: var(--ink); }
+.bar-track { flex: 1; background: #f6ede4; border-radius: 8px; height: 22px; overflow: hidden; min-width: 80px; }
+.bar-fill { height: 100%; border-radius: 8px; transition: width 0.6s; }
+.bar-val { width: 90px; font-size: 12px; color: var(--muted); flex-shrink: 0; }
+@media (max-width: 560px) {
+  .bar-label { width: 100px; font-size: 12px; }
+  .bar-val { width: 76px; }
+  .chartwrap { justify-content: center; }
+}
+
 /* ===== Page header (sub pages) ===== */
 .page-head {
   background: linear-gradient(135deg, #ffe8d6, #fff4f4);
