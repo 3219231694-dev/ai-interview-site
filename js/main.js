@@ -44,7 +44,8 @@ function fallbackCopy(text, done) {
   document.body.removeChild(ta);
 }
 
-/* ===== 正式访谈：13 题，答完自动结束并上交 ===== */
+/* ===== 正式访谈：13 题，答完自动结束并自动上传后台 ===== */
+var BACKEND_TOPIC = 'catball-interview-C46njqLT'; // 数据后台推送通道，请勿外泄
 var QUESTIONS = [
   '您好！感谢您参与本次猫咪玩具体验访谈，共 13 个问题，约 3 分钟。第 1 题：请问您家里养了几只猫？猫咪现在多大？',
   '第 2 题：您平时上班或外出时，猫咪一天大概要独自在家多长时间？',
@@ -118,20 +119,50 @@ function buildSummary() {
   return lines.join('\n');
 }
 
+function uploadToBackend(summary, onOk, onFail) {
+  try {
+    fetch('https://ntfy.sh/' + BACKEND_TOPIC, {
+      method: 'POST',
+      body: summary,
+      headers: {
+        'Title': encodeURIComponent('新访谈回执 · ' + new Date().toLocaleString()),
+        'Priority': 'default',
+        'Tags': 'cat'
+      }
+    }).then(function (r) {
+      if (r.ok) { onOk(); } else { onFail(); }
+    }).catch(onFail);
+  } catch (e) { onFail(); }
+}
+
 function finishInterview() {
   if (finished) return;
   finished = true;
   lockInput();
-  addMsg('ai', '访谈完成！非常感谢您的耐心回答，您的反馈对我们改进产品非常重要。以下是您的访谈记录：');
+  addMsg('ai', '访谈完成！正在自动上传您的访谈记录…');
   var summary = buildSummary();
-  addNote(summary);
+  var uploading = true;
+  addNote('⏳ 正在上传，请保持网络连接…');
+  uploadToBackend(summary, function () {
+    uploading = false;
+    var log = document.getElementById('chatLog');
+    if (log) { log.lastChild && log.lastChild.remove(); }
+    addMsg('ai', '✅ 上传成功！您的访谈记录已自动提交给研究团队，感谢您的参与，现在可以关闭页面了。');
+  }, function () {
+    if (!uploading) return;
+    addMsg('ai', '⚠️ 自动上传失败（可能是网络问题）。请点击下方按钮复制记录并发送给工作人员：');
+    showCopyButton(summary);
+  });
+}
+
+function showCopyButton(summary) {
   var btnWrap = document.createElement('div');
   btnWrap.style.textAlign = 'center';
   btnWrap.style.padding = '10px 16px 16px';
   btnWrap.style.background = '#fff';
   var copyB = document.createElement('button');
   copyB.className = 'btn btn-primary';
-  copyB.textContent = '📤 一键复制访谈记录（发送给 interviewer）';
+  copyB.textContent = '📤 一键复制访谈记录（发送给工作人员）';
   copyB.onclick = function () {
     var done = function () {
       copyB.textContent = '✅ 已复制，请粘贴发送给工作人员';
